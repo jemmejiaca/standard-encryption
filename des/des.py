@@ -7,6 +7,10 @@ INITIAL = 'initial'
 with open('des_maps.json') as data_file:
 	transforms = json.load(data_file)
 
+IP = transforms[PERM][INITIAL]
+PC1 = transforms[PERM]["1"]
+PC2 = transforms[PERM]["2"]
+
 # Converts decimals to bits
 def convert_to_bits(n, pad):
     result = []
@@ -41,8 +45,11 @@ def chunks(l, n):
         
 # Print lists with a space every j elements with a message as prefix.
 def print_list(msg, l, j):
-	left_spaces = 11
+	left_spaces = 23
 	msg_len = len(msg)
+	if j == 0: 
+		print msg + (' ' * (left_spaces - msg_len)), "".join(str(x) for x in l)
+		return
 	s = ''
 	c = 0
 	for i in l:
@@ -65,12 +72,11 @@ def des_encrypt(block, key):
 	print_list('key =', key, 8)
 	
 	pblock = initial_permutation(block)
-	pkey = create_subkeys(key)
+	create_subkeys(key)
 
 # Makes the initial permutation (IP) on the plaintext block.
 def initial_permutation(block):
 	perm_block = ['e'] * 64
-	IP = transforms[PERM][INITIAL]
 	for i in range(64):
 		#print i, IP[i] - 1 
 		perm_block[i] = block[IP[i] - 1]
@@ -78,14 +84,51 @@ def initial_permutation(block):
 	return perm_block
 	
 def create_subkeys(key):
-	perm_key = ['e'] * 56
-	PC1 = transforms[PERM]["1"]
-	#print "pc1 len", len(PC1)
+	subkeys = [[]] * 17
+	C = [['c'] * 28] * 17  # this is begging for a more elegant form.
+	D = [['d'] * 28] * 17
+	
+	pkey = pc1(key)
+	
+	C[0] = pkey[0:28]
+	D[0] = pkey[28:56]
+	print_list('C[0] ', C[0], 7)
+	print_list('D[0] ', D[0], 7)
+	subkeys[0] = pc2(C[0], D[0], 0) # WARNING: this subkey is never used
+	
+	for i in xrange(1, 17):
+		msg_c = "C["+str(i)+"] ="
+		msg_d = "D["+str(i)+"] ="
+		if i in [1, 2, 9, 16]:
+			C[i] = left_shift(C[i-1], 1)
+			D[i] = left_shift(D[i-1], 1)
+		else:
+			C[i] = left_shift(C[i-1], 2)
+			D[i] = left_shift(D[i-1], 2)
+		print_list(msg_c, C[i], 0)
+		print_list(msg_d, D[i], 0)
+		subkeys[i] = pc2(C[i], D[i], i)
+	
+	
+def left_shift(l, n):
+	return l[n:] + l[:n]
+	
+def pc1(key):
+	pkey = ['e'] * 56
 	for i in range(56):
-		print i, PC1[i] - 1, key[PC1[i] - 1]
-		perm_key[i] = key[PC1[i] - 1]
-	print_list('PC1(key) =', perm_key, 7)
-	return perm_key
+		pkey[i] = key[PC1[i] - 1]
+	print_list('PC1(key) =', pkey, 7)
+	return pkey
+	
+def pc2(c, d, k):
+	presubkey = c + d
+	psubkey = ['e'] * 48
+	for i in range(48):
+		psubkey[i] = presubkey[PC2[i] - 1]
+	msg = 'PC2(C[' + str(k) +']D[' + str(k)+']): k' + str(k) + ' ='
+	print_list(msg, psubkey, 6)
+	return psubkey
+	
 
 #               -------- Example from the slides --------
 
