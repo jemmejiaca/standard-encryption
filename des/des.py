@@ -79,7 +79,7 @@ def des_encrypt(block, key):
 	print "-------------------Part 1: Create 16 subkeys------------------"
 	subkeys = create_subkeys(key)
 	print "-------------------Part 2: Encode the block-------------------"
-	encode(block, subkeys)
+	return encrypt(block, subkeys)
 
 # Makes the initial permutation (IP) on the plaintext block.
 def ip(block):
@@ -116,17 +116,20 @@ def create_subkeys(key):
 		print_list(msg_d, D[i], 0)
 		subkeys[i] = pc2(C[i], D[i], i)
 	return subkeys
-	
+
+# Makes a cyclic shift by n positions on the array l
 def left_shift(l, n):
 	return l[n:] + l[:n]
-	
+
+# Makes the PC1 permutation
 def pc1(key):
 	pkey = ['e'] * 56
 	for i in range(56):
 		pkey[i] = key[PC1[i] - 1]
 	print_list('PC1(key) =', pkey, 7)
 	return pkey
-	
+
+# Makes the PC2 permutation
 def pc2(c, d, k):
 	presubkey = c + d
 	psubkey = ['e'] * 48
@@ -136,7 +139,8 @@ def pc2(c, d, k):
 	print_list(msg, psubkey, 6)
 	return psubkey
 
-def encode(block, subkeys):
+# Encrypts a 128-bit block
+def encrypt(block, subkeys):
 	L = [[]] * 17
 	R = [[]] * 17
 	pblock = ip(block)
@@ -157,7 +161,8 @@ def encode(block, subkeys):
 		print_list('L[' + str(i - 1) + '] =', L[i - 1], 4)
 		print_list(msg_r, R[i], 4)
 	return inv_ip(R[16] + L[16])
-	
+
+# Calculates the inner function on R with a subkey
 def inner_f(R, subkey, index):
 	msg_k = 'k[' + str(index) + '] ='
 	msg_exp = 'E[R[' + str(index-1) + ']] ='
@@ -184,51 +189,42 @@ def inner_f(R, subkey, index):
 	#print_list("d =", d, 4)
 	pd = permutate(d)
 	return pd
-	
+
+# Performs xor over the arrays X and Y
+# TODO: This is a pretty weird implementation but works!
 def lxor(X, Y):
 	b1 = ''.join(str(i) for i in X)
 	b2 = ''.join(str(j) for j in Y)
 	a = int(b1, 2)
 	b = int(b2, 2)
-	print a, "xor", b
+	#print a, "xor", b
 	c = bin(a ^ b)
 	myformat = "{0:0" + str(len(X)) + "b}"
 	print "xor res", list(myformat.format(int(c, 2)))
 	return list(myformat.format(int(c, 2)))
-		
-def _lxor(A, B):
-	n = len(A)
-	result = []
-	for i in xrange(n):
-		result.append( int(bool( A[i] ) ^ bool( B[i] )) )
-		
-	print "-------------------begin XOR-------------------------"
-	print_list("", A, 4)
-	print "                    xor"
-	print_list("", B, 4)
-	print "                 result"
-	print_list("", result, 4)
-	print "--------------------end XOR-------------------------"
-	return result
-	
+
+# Makes the E expansion
 def expand(R):
 	result = ['e'] * 48
 	for i in xrange(48):
 		result[i] = R[E[i] - 1]
 	return result
 	
+# Makes the P permutation
 def permutate(C):
 	result = ['e'] * 32
 	for i in xrange(32):
 		result[i] = C[P[i] - 1]
 	return result
-	
+
+# Return the (i, j) value from the sbox n+1
 def sbox(n, i, j):
 	msg = 'S' + str(n+1) + '[' + str(i) + ', ' + str(j) + '] = '
 	S = transforms[SBOXES]['S' + str(n + 1)][i][j]
 	print msg, S, "{0:04b}".format(S)
 	return S
-	
+
+# Makes the IP^-1 permutation
 def inv_ip(block):
 	perm_block = ['e'] * 64
 	for i in range(64):
