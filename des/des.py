@@ -7,7 +7,7 @@ INNER = 'inner'
 SBOXES = 's-boxes'
 INVERSE = 'inv_initial'
 
-with open('des_maps.json') as data_file:
+with open('maps.json') as data_file:
 	transforms = json.load(data_file)
 
 IP = transforms[PERM][INITIAL]
