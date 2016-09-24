@@ -3,13 +3,19 @@ from pprint import pprint
 
 PERM = 'perm'
 INITIAL = 'initial'
+INNER = 'inner'
+SBOXES = 's-boxes'
+INVERSE = 'inv_initial'
 
 with open('des_maps.json') as data_file:
 	transforms = json.load(data_file)
 
 IP = transforms[PERM][INITIAL]
-PC1 = transforms[PERM]["1"]
-PC2 = transforms[PERM]["2"]
+IP_1 = transforms[PERM][INVERSE]
+PC1 = transforms[PERM]['1']
+PC2 = transforms[PERM]['2']
+E = transforms[INNER]['E']
+P = transforms[INNER]['P']
 
 # Converts decimals to bits
 def convert_to_bits(n, pad):
@@ -67,15 +73,16 @@ def generate_random_key():
 
 # The des encryption algortihm for a single block and 128-length key.
 def des_encrypt(block, key):
-	print "-------------------DES Encryption-------------------"
+	print "------------------------DES Encryption------------------------"
 	print_list('block =', block, 8)
 	print_list('key =', key, 8)
-	
-	pblock = initial_permutation(block)
-	create_subkeys(key)
+	print "-------------------Part 1: Create 16 subkeys------------------"
+	subkeys = create_subkeys(key)
+	print "-------------------Part 2: Encode the block-------------------"
+	encode(block, subkeys)
 
 # Makes the initial permutation (IP) on the plaintext block.
-def initial_permutation(block):
+def ip(block):
 	perm_block = ['e'] * 64
 	for i in range(64):
 		#print i, IP[i] - 1 
@@ -90,8 +97,8 @@ def create_subkeys(key):
 	
 	pkey = pc1(key)
 	
-	C[0] = pkey[0:28]
-	D[0] = pkey[28:56]
+	C[0] = pkey[:28]
+	D[0] = pkey[28:]
 	print_list('C[0] ', C[0], 7)
 	print_list('D[0] ', D[0], 7)
 	subkeys[0] = pc2(C[0], D[0], 0) # WARNING: this subkey is never used
@@ -108,7 +115,7 @@ def create_subkeys(key):
 		print_list(msg_c, C[i], 0)
 		print_list(msg_d, D[i], 0)
 		subkeys[i] = pc2(C[i], D[i], i)
-	
+	return subkeys
 	
 def left_shift(l, n):
 	return l[n:] + l[:n]
@@ -128,6 +135,107 @@ def pc2(c, d, k):
 	msg = 'PC2(C[' + str(k) +']D[' + str(k)+']): k' + str(k) + ' ='
 	print_list(msg, psubkey, 6)
 	return psubkey
+
+def encode(block, subkeys):
+	L = [[]] * 17
+	R = [[]] * 17
+	pblock = ip(block)
+	L[0] = pblock[:32]
+	R[0] = pblock[32:]
+	print_list('L[0] =', L[0], 4)
+	print_list('R[0] =', R[0], 4)
+	
+	for i in xrange(1, 17):
+		L[i] = R[i - 1]
+		f = inner_f(R[i - 1], subkeys[i], i)
+		R[i] = lxor(L[i - 1], f)
+		
+		msg_l = 'L[' + str(i) + '] ='
+		msg_r = 'R[' + str(i) + '] ='
+		print_list(msg_l, L[i], 4)
+		print_list("f =", f, 4)
+		print_list('L[' + str(i - 1) + '] =', L[i - 1], 4)
+		print_list(msg_r, R[i], 4)
+	return inv_ip(R[16] + L[16])
+	
+def inner_f(R, subkey, index):
+	msg_k = 'k[' + str(index) + '] ='
+	msg_exp = 'E[R[' + str(index-1) + ']] ='
+	msg_xor = 'k[' + str(index) + '] xor ' + msg_exp
+	rexp = expand(R)
+	xored = lxor(rexp, subkey)
+	print_list(msg_exp, rexp, 6)
+	print_list(msg_k, subkey, 6)
+	print_list(msg_xor, xored, 6)
+	
+	boxes = list(chunks(xored, 6))
+	print "boxes", 
+	pprint(boxes)
+	k = 0
+	sboxes = [[]] * 8
+	d = []
+	for B in boxes:
+		r = str(int(str(B[0]) + str(B[5]), 2))
+		c = str(int(str(B[1]) + str(B[2]) + str(B[3]) + str(B[4]), 2))
+		#print "S[k]", S['S1']
+		sboxes[k] = list("{0:04b}".format(sbox(k, r, c)))
+		d = d + sboxes[k]
+		k = k + 1
+	#print_list("d =", d, 4)
+	pd = permutate(d)
+	return pd
+	
+def lxor(X, Y):
+	b1 = ''.join(str(i) for i in X)
+	b2 = ''.join(str(j) for j in Y)
+	a = int(b1, 2)
+	b = int(b2, 2)
+	print a, "xor", b
+	c = bin(a ^ b)
+	myformat = "{0:0" + str(len(X)) + "b}"
+	print "xor res", list(myformat.format(int(c, 2)))
+	return list(myformat.format(int(c, 2)))
+		
+def _lxor(A, B):
+	n = len(A)
+	result = []
+	for i in xrange(n):
+		result.append( int(bool( A[i] ) ^ bool( B[i] )) )
+		
+	print "-------------------begin XOR-------------------------"
+	print_list("", A, 4)
+	print "                    xor"
+	print_list("", B, 4)
+	print "                 result"
+	print_list("", result, 4)
+	print "--------------------end XOR-------------------------"
+	return result
+	
+def expand(R):
+	result = ['e'] * 48
+	for i in xrange(48):
+		result[i] = R[E[i] - 1]
+	return result
+	
+def permutate(C):
+	result = ['e'] * 32
+	for i in xrange(32):
+		result[i] = C[P[i] - 1]
+	return result
+	
+def sbox(n, i, j):
+	msg = 'S' + str(n+1) + '[' + str(i) + ', ' + str(j) + '] = '
+	S = transforms[SBOXES]['S' + str(n + 1)][i][j]
+	print msg, S, "{0:04b}".format(S)
+	return S
+	
+def inv_ip(block):
+	perm_block = ['e'] * 64
+	for i in range(64):
+		#print i, IP[i] - 1 
+		perm_block[i] = block[IP_1[i] - 1]
+	print_list('IP_1(block) =', perm_block, 8)
+	return perm_block
 	
 
 #               -------- Example from the slides --------
