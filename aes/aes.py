@@ -22,11 +22,14 @@
 #
 import json
 from pprint import pprint
+from copy import copy
 
 with open('_maps.json') as data_file:
 	boxes = json.load(data_file)
 	
 sbox = boxes['SBOX']
+L = boxes['L']
+E = boxes['E']
 
 rcon = [0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a,
         0x2f, 0x5e, 0xbc, 0x63, 0xc6, 0x97, 0x35, 0x6a, 0xd4, 0xb3, 0x7d, 0xfa, 0xef, 0xc5, 0x91, 0x39,
@@ -47,9 +50,19 @@ rcon = [0x8d, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36, 0x6c, 
 
 def aes128(block, cipher_key):
 	cipher_block = ''
-	state = build_state_matrix(block)
-	key   = build_key_matrix(cipher_key)
-	generate_subkeys(key)
+	state 		= build_state_matrix(block)
+	key   		= build_key_matrix(cipher_key)
+	round_keys 	= generate_subkeys(key)
+	add_round_key(state, key)
+	print 'state:'
+	pprint(state)
+	for round_key in round_keys[1:]:
+		sub_bytes(state)
+		shift_rows(state)
+		mix_columns(state)
+		print 'state:'
+		pprint(state)
+	
 	return cipher_block
 	
 def generate_subkeys(key):
@@ -73,7 +86,7 @@ def generate_subkeys(key):
 			if i >= 8:
 				round_keys[round_key_index] = round_key
 			round_key_index += 1
-			rot = rot_word(W[i-1])
+			rot = rot_word(W[i-1], 1)
 			sub = sub_word(rot)
 			new = hex(int(sub[0], 16) ^ rcon[i/4])[2:]
 			new_sub = [new] + sub[1:]
@@ -81,60 +94,123 @@ def generate_subkeys(key):
 			
 			round_key = [W[i]]
 			print '--------------------------------------------------------------------------------------'
-			print '{0:2d}  {1}  {2}   {3:8}      {4:8} {5:8}  {6:8}   {7}'.format(i, ''.join(W[i-1]), ''.join(rot), ''.join(sub), hex(rcon[i/4]), ''.join(new_sub), ''.join(W[i-4]), ''.join(W[i]))
+			print '{0:2d}  {1}  {2}   {3:8}      {4:8} {5:8}  {6:8}   {7}'\
+				.format(i, ''.join(W[i-1]), ''.join(rot), ''.join(sub), \
+				hex(rcon[i/4]), ''.join(new_sub), ''.join(W[i-4]), ''.join(W[i]))
 		else:
 			W[i] = xor(W[i - 4], W[i - 1])
 			round_key.append(W[i])
-			print '{0:2d}  {1}  {2:8}   {3:8}      {4:8} {5:8}  {6:8}   {7}'.format(i, ''.join(W[i-1]), '', '', '', '', ''.join(W[i-4]), ''.join(W[i]))
+			print '{0:2d}  {1}  {2:8}   {3:8}      {4:8} {5:8}  {6:8}   {7}'\
+				.format(i, ''.join(W[i-1]), '', '', '', '', ''.join(W[i-4]), ''.join(W[i]))
 		round_keys[-1] = round_key
 		
 	for k in xrange(1, len(round_keys)):
-		dump_key = transpose(round_keys[k])
-		round_keys[k] = dump_key
-	print 'round_keys'
+		temp_key = transpose(round_keys[k])
+		round_keys[k] = temp_key
+	print 'round_keys:'
 	pprint(round_keys)
 	return round_keys
 			
 def put_leading_zeroes(d):
 	return '{:08d}'.format(d)
 
-# Makes a cyclic shift by n positions on the array l
-def rot_word(l):
-	return l[1:] + l[:1]
+# Makes a cyclic left shift by n positions on the array l
+def rot_word(l, n):
+	return l[n:] + l[:n]
 
 def sub_word(C):
 	S = []
 	for c in C:
-		if c[0] == ' ': c[0] = '0'
-		if c[1] == ' ': c[1] = '0'
 		S.append(sbox[c[0]][c[1]])
 	return S
 	
+def add_round_key(state, round_key):
+	for i in xrange(len(state)):
+		state[i] = xor(state[i], round_key[i])
+		
+def shift_rows(state):
+    for i in xrange(4):
+        state[i*4:i*4+4] = rot_word(state[i*4:i*4+4],i)
+        
+def sub_bytes(state):
+    for i in xrange(len(state)):
+		for j in xrange(len(state[i])):
+			state[i][j] = str(sbox[state[i][j][0]][state[i][j][1]])
+
+	
+def mix_columns(state):
+    for i in range(4):
+        column = []
+        # create the column by taking the same item out of each "virtual" row
+        for j in range(4):
+            column.append(state[j][i])
+
+        # apply mixColumn on our virtual column
+        mix_column(column)
+
+        # transfer the new values back into the state table
+        for j in range(4):
+            state[j][i] = column[j]
+    
+# mixColumn takes a column and does stuff
+def mixColumn(column):
+    temp = copy(column)
+    column[0] = galois_mult(temp[0],2) ^ galois_mult(temp[3],1) ^ \
+                galois_mult(temp[2],1) ^ galois_mult(temp[1],3)
+    column[1] = galois_mult(temp[1],2) ^ galois_mult(temp[0],1) ^ \
+                galois_mult(temp[3],1) ^ galois_mult(temp[2],3)
+    column[2] = galois_mult(temp[2],2) ^ galois_mult(temp[1],1) ^ \
+                galois_mult(temp[0],1) ^ galois_mult(temp[3],3)
+    column[3] = galois_mult(temp[3],2) ^ galois_mult(temp[2],1) ^ \
+                galois_mult(temp[1],1) ^ galois_mult(temp[0],3)
+
 # Galois Multiplication
 def galoisMult(a, b):
-    p = 0
-    hiBitSet = 0
-    for i in range(8):
-        if b & 1 == 1:
-            p ^= a
-        hiBitSet = a & 0x80
-        a <<= 1
-        if hiBitSet == 0x80:
-            a ^= 0x1b
-        b >>= 1
-    return p % 256
+	a = int(hex(int('0x'+str(a), 16)),16)
+	b = int(hex(int('0x'+str(b), 16)),16)
+	p = 0
+	hiBitSet = 0
+	for i in range(8):
+		if b & 1 == 1:
+			p ^= a
+		hiBitSet = a & 0x80
+		a <<= 1
+		if hiBitSet == 0x80:
+			a ^= 0x1b
+			b >>= 1
+	return p % 256
 	
-def T(C):
-	return C
+def galois(h1, h2):
+	a = L[h1[0]][h1[1]]
+	b = L[h2[0]][h2[1]]
+	c = (int(a, 16) + int(b, 16)) % 255
+	d = hex(c)[2:]
+	return E[d[0]][d[1]]
 	
-def xor(A, B):
+
+def mix_column(col):
+	new_col = [[]] * 4
+	tmp_00 = val_xor(galois('02', col[0]), galois('03', col[1]))
+	new_col[0] = val_xor(val_xor(tmp_0, col[2]), col[3])
+	tmp_11 = val_xor(col[0], galois('02'. col[1]))
+	tmp_12 = val_xor(galois('03'. col[2]), col[3])
+	new_col[1] = val_xor(tmp_11, tmp_12)
+	tmp_02 = val_xor(galois('02', col[2]), galois('03', col[3]))
+	new_col[2] = val_xor(val_xor(col[0], col[1]), tmp_02)
+	tmp_31 = val_xor(galois('03', col[0]), col[1])
+	tmp_32 = val_xor(col[2], galois('02', col[3]))
+	new_col[3] = val_xor(tmp_31, tmp_32)
+	return new_col
+
+def val_xor(x, y):
+	return hex(int(x, 16) ^ int(y, 16))[2:].zfill(2)
+	
+def list_xor(A, B):
 	result = []
 	for i, j in zip(A, B):
 		result.append(hex(int(i, 16) ^ int(j, 16))[2:].zfill(2))
 	return result
 		
-		
-	
 def build_state_matrix(block):
 	raw_state = list(chunks(block, 4))
 	state = transpose(raw_state)
@@ -151,7 +227,6 @@ def build_key_matrix(cipher_key):
 	
 def transpose(M):
 	return [list(i) for i in zip(*M)]
-	
 
 # Yield successive n-sized chunks from l.
 def chunks(l, n):
