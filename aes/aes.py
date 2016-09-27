@@ -23,7 +23,7 @@
 import json
 from pprint import pprint
 
-with open('maps.json') as data_file:
+with open('_maps.json') as data_file:
 	boxes = json.load(data_file)
 	
 sbox = boxes['SBOX']
